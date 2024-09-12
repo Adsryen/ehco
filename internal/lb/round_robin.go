@@ -1,33 +1,53 @@
 package lb
 
 import (
-	"github.com/Ehco1996/ehco/internal/logger"
+	"net/url"
+	"strings"
+	"time"
+
 	"go.uber.org/atomic"
 )
 
 type Node struct {
-	Address string
-	Label   string
-
-	BlockTimes *atomic.Int64
+	Address           string
+	HandShakeDuration time.Duration
 }
 
-func (n *Node) BlockForSomeTime() {
-	// TODO: make this configurable
-	n.BlockTimes.Add(1000)
-	logger.Infof("[lb] block remote node for 1000 times lable=%s remote=%s", n.Label, n.Address)
+func (n *Node) Clone() *Node {
+	return &Node{
+		Address:           n.Address,
+		HandShakeDuration: n.HandShakeDuration,
+	}
+}
+
+func extractHost(input string) (string, error) {
+	// Check if the input string has a scheme, if not, add "http://"
+	if !strings.Contains(input, "://") {
+		input = "http://" + input
+	}
+	// Parse the URL
+	u, err := url.Parse(input)
+	if err != nil {
+		return "", err
+	}
+	return u.Hostname(), nil
+}
+
+// NOTE for (https/ws/wss)://xxx.com -> xxx.com
+func (n *Node) GetAddrHost() (string, error) {
+	return extractHost(n.Address)
 }
 
 // RoundRobin is an interface for representing round-robin balancing.
 type RoundRobin interface {
 	Next() *Node
+	GetAll() []*Node
 }
 
 type roundrobin struct {
 	nodeList []*Node
 	next     *atomic.Int64
-
-	len int
+	len      int
 }
 
 func NewRoundRobin(nodeList []*Node) RoundRobin {
@@ -39,9 +59,9 @@ func NewRoundRobin(nodeList []*Node) RoundRobin {
 func (r *roundrobin) Next() *Node {
 	n := r.next.Add(1)
 	next := r.nodeList[(int(n)-1)%r.len]
-	if next.BlockTimes.Load() > 0 {
-		next.BlockTimes.Dec()
-		return r.Next()
-	}
 	return next
+}
+
+func (r *roundrobin) GetAll() []*Node {
+	return r.nodeList
 }

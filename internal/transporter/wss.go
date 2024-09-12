@@ -2,38 +2,51 @@ package transporter
 
 import (
 	"context"
-	"net"
+	"crypto/tls"
 
-	"github.com/Ehco1996/ehco/internal/logger"
-	"github.com/Ehco1996/ehco/internal/tls"
-	"github.com/Ehco1996/ehco/internal/web"
-	"github.com/gobwas/ws"
+	"github.com/Ehco1996/ehco/internal/relay/conf"
+	mytls "github.com/Ehco1996/ehco/internal/tls"
 )
 
-type Wss struct {
-	raw *Raw
+var (
+	_ RelayClient = &WssClient{}
+	_ RelayServer = &WssServer{}
+)
+
+type WssClient struct {
+	*WsClient
 }
 
-func (s *Wss) GetOrCreateBufferCh(uaddr *net.UDPAddr) *BufferCh {
-	return s.raw.GetOrCreateBufferCh(uaddr)
+func newWssClient(cfg *conf.Config) (*WssClient, error) {
+	wc, err := newWsClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	// insert tls config
+	wc.dialer.TLSConfig = mytls.DefaultTLSConfig
+	wc.dialer.TLSConfig.InsecureSkipVerify = true
+	return &WssClient{WsClient: wc}, nil
 }
 
-func (s *Wss) HandleUDPConn(uaddr *net.UDPAddr, local *net.UDPConn) {
-	s.raw.HandleUDPConn(uaddr, local)
+type WssServer struct {
+	*WsServer
 }
 
-func (s *Wss) HandleTCPConn(c *net.TCPConn) error {
-	defer c.Close()
-	remote := s.raw.TCPRemotes.Next()
-	web.CurConnectionCount.WithLabelValues(remote.Label, web.METRIC_CONN_TCP).Inc()
-	defer web.CurConnectionCount.WithLabelValues(remote.Label, web.METRIC_CONN_TCP).Dec()
+func newWssServer(bs *BaseRelayServer) (*WssServer, error) {
+	wsServer, err := newWsServer(bs)
+	if err != nil {
+		return nil, err
+	}
+	return &WssServer{WsServer: wsServer}, nil
+}
 
-	d := ws.Dialer{TLSConfig: tls.DefaultTLSConfig}
-	wsc, _, _, err := d.Dial(context.TODO(), remote.Address+"/wss/")
+func (s *WssServer) ListenAndServe(ctx context.Context) error {
+	listener, err := NewTCPListener(ctx, s.cfg)
 	if err != nil {
 		return err
 	}
-	defer wsc.Close()
-	logger.Infof("[wss] HandleTCPConn from %s to %s", c.LocalAddr().String(), remote.Label)
-	return transport(c, wsc, remote.Label)
+	tlsCfg := mytls.DefaultTLSConfig
+	tlsCfg.InsecureSkipVerify = true
+	tlsListener := tls.NewListener(listener, mytls.DefaultTLSConfig)
+	return s.httpServer.Serve(tlsListener)
 }

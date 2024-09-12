@@ -2,49 +2,33 @@ package constant
 
 import "time"
 
-var (
-	DefaultDeadline = 30 * time.Second
+type RelayType string
 
-	Version     = "1.1.1"
+var (
+	Version     = "1.1.5"
 	GitBranch   string
 	GitRevision string
 	BuildTime   string
-
-	IndexHTMLTMPL = `<!doctype html>
-	<html>
-	<head>
-		<meta charset="UTF-8">
-	</head>
-	<body>
-		<h2>ehco is a network relay tool and a typo :)</h2>
-		<hr>
-		<h3>Version: ` + Version + `</h3>
-		<h3>GitBranch: ` + GitBranch + `</h3>
-		<h3>GitRevision: ` + GitRevision + `</h3>
-		<h3>BuildTime: ` + BuildTime + `</h3>
-		<hr>
-		<p><a href="https://github.com/Ehco1996/ehco">More information here</a></p>
-		<p><a href="/metrics/">Metrics</a></p>
-		<p><a href="/debug/pprof/">Debug</a></p>
-	</body>
-	</html>
-	`
+	StartTime   = time.Now().Local()
 )
 
 const (
-	MaxMWSSStreamCnt = 100
-	DialTimeOut      = 3 * time.Second
+	DefaultDialTimeOut  = 3 * time.Second
+	DefaultReadTimeOut  = 5 * time.Second
+	DefaultIdleTimeOut  = 10 * time.Second
+	DefaultSniffTimeOut = 300 * time.Millisecond
 
-	Listen_RAW  = "raw"
-	Listen_WS   = "ws"
-	Listen_WSS  = "wss"
-	Listen_MWSS = "mwss"
+	// todo,support config in relay config
+	BUFFER_POOL_SIZE = 1024      // support 512 connections
+	BUFFER_SIZE      = 40 * 1024 // 40KB ,the maximum packet size of shadowsocks is about 16 KiB so this is enough
+	UDPBufSize       = 1500      // use default max mtu 1500
+)
 
-	Transport_RAW  = "raw"
-	Transport_WS   = "ws"
-	Transport_WSS  = "wss"
-	Transport_MWSS = "mwss"
-
-	BUFFER_POOL_SIZE = 128      // 128 * 4kb
-	BUFFER_SIZE      = 4 * 1024 // 4kb
+// relay type
+const (
+	// direct relay
+	RelayTypeRaw RelayType = "raw"
+	// ws relay
+	RelayTypeWS  RelayType = "ws"
+	RelayTypeWSS RelayType = "wss"
 )

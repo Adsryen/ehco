@@ -21,3 +21,11 @@ cert.pem
 key.pem
 .DS_Store
 monitor/data/
+main
+ehco
+
+cmd/test/
+localdev/
+
+.vscode/settings.json
+.zed/

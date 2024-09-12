@@ -1,25 +1,11 @@
-FROM golang:1.16 as builder
+FROM debian:12-slim
 
-# Set Environment Variables
-ENV HOME /app
-ENV CGO_ENABLED 0
-ENV GOOS linux
-
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-
-# Build the Go app
-RUN go build -v -a -installsuffix cgo -o ehco cmd/ehco/main.go
-
-FROM alpine:latest
-
-RUN apk --no-cache add ca-certificates
+RUN apt update && apt install -y --no-install-recommends ca-certificates curl glibc-source libc6
 
 WORKDIR /bin/
 
 # Copy the pre-built binary file from the previous stage
-COPY --from=builder /app/ehco .
+COPY ehco .
+RUN chmod +x ehco
 
-ENTRYPOINT ["/bin/ehco"]
+ENTRYPOINT ["ehco"]

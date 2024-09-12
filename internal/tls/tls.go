@@ -12,28 +12,32 @@ import (
 	"os"
 	"time"
 
-	"github.com/Ehco1996/ehco/internal/logger"
+	"go.uber.org/zap"
 )
 
 // pre built in tls cert
 var (
-	CertFileName     = os.Getenv("EHCO_CERT_FILE_NAME")
-	KeyFileName      = os.Getenv("EHCO_KEY_FILE_NAME")
-	DefaultTLSConfig *tls.Config
+	CertFileName = os.Getenv("EHCO_CERT_FILE_NAME")
+	KeyFileName  = os.Getenv("EHCO_KEY_FILE_NAME")
+
+	DefaultTLSConfig          *tls.Config
+	DefaultTLSConfigCertBytes []byte
+	DefaultTLSConfigKeyBytes  []byte
 )
 
-func InitTlsCfg() {
+func InitTlsCfg() error {
 	if DefaultTLSConfig != nil {
-		return
+		return nil
 	}
 	cert, err := genCertificate()
 	if err != nil {
-		panic(err)
+		return err
 	}
 	DefaultTLSConfig = &tls.Config{
 		Certificates:       []tls.Certificate{cert},
 		InsecureSkipVerify: true,
 	}
+	return nil
 }
 
 func genCertificate() (cert tls.Certificate, err error) {
@@ -77,41 +81,49 @@ func generateKeyPair() (rawCert, rawKey []byte, err error) {
 
 	rawCert = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	rawKey = pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	DefaultTLSConfigCertBytes = rawCert
+	DefaultTLSConfigKeyBytes = rawKey
 
 	if CertFileName != "" {
 		certOut, err := os.Create(CertFileName)
 		if err != nil {
-			logger.Fatalf("failed to open cert.pem for writing: %s", err)
+			// todo fix logger
+			zap.S().Fatalf("failed to open cert.pem for writing: %s", err)
 		}
 		if err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes}); err != nil {
-			logger.Info("failed to pem encode:", err)
+			zap.S().Info("failed to pem encode:", err)
 		}
-		certOut.Close()
-		logger.Infof("write cert to %s", CertFileName)
+		if err := certOut.Close(); err != nil {
+			zap.S().Error("error closing cert.pem:", err)
+			return nil, nil, err
+		}
+		zap.S().Infof("write cert to %s", CertFileName)
 	}
 	if KeyFileName != "" {
-		keyOut, err := os.OpenFile(KeyFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		keyOut, err := os.OpenFile(KeyFileName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 		if err != nil {
-			logger.Info("failed to open key.pem for writing:", err)
+			zap.S().Info("failed to open key.pem for writing:", err)
 		}
-		if err = pem.Encode(keyOut, pemBlockForKey(priv)); err != nil {
-			logger.Info("failed to pem encode:", err)
+		if err = pem.Encode(keyOut, mustPemBlockForKey(priv)); err != nil {
+			zap.S().Info("failed to pem encode:", err)
 		}
-		keyOut.Close()
-		logger.Infof("write key to %s", KeyFileName)
+		if err := keyOut.Close(); err != nil {
+			zap.S().Error("error closing key.pem:", err)
+			return nil, nil, err
+		}
+		zap.S().Infof("write key to %s", KeyFileName)
 	}
 	return
 }
 
-func pemBlockForKey(priv interface{}) *pem.Block {
+func mustPemBlockForKey(priv interface{}) *pem.Block {
 	switch k := priv.(type) {
 	case *rsa.PrivateKey:
 		return &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}
 	case *ecdsa.PrivateKey:
 		b, err := x509.MarshalECPrivateKey(k)
 		if err != nil {
-			logger.Infof("Unable to marshal ECDSA private key: %v", err)
-			os.Exit(2)
+			zap.S().Errorf("Unable to marshal ECDSA private key: %v", err)
 		}
 		return &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
 	default:
